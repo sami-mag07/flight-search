@@ -1,81 +1,134 @@
-# Flugsuche
+# flight-search
 
-Ein Agent fragt kurz nach Strecke, Daten und Gepäck, durchsucht Google Flights für jeden Tag und jeden Flughafen, wiederholt die Suche über VPN aus mehreren Ländern und zeigt die günstigsten Flüge als Tabelle mit Links.
+An agent asks where you want to fly, when, with what baggage, how you pay and where you want to buy. It searches Google Flights for every day and airport, repeats the search over VPN from other countries, checks the best flights directly on airline and booking sites abroad, and shows the cheapest options as tables with links.
 
-## Einrichten
+![Result board](docs/board.png)
 
-Einmal, etwa 5 Minuten.
+## Setup
 
-1. **uv** installieren (startet das Skript samt Abhängigkeiten):
-   Mac und Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`,
+Once, about 5 minutes.
+
+1. **uv** runs the script with its dependencies:
+   macOS and Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`,
    Windows `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`.
-2. **Claude Code** installieren: https://claude.com/claude-code. Andere Agents gehen auch, sie lesen `AGENTS.md`.
-3. **Repo holen:**
+2. **Claude Code**: https://claude.com/claude-code. Other agents work too, they read `AGENTS.md`.
+3. **Get the repo:**
    ```
-   git clone https://github.com/sami-mag07/flugsuche
-   cd flugsuche
+   git clone https://github.com/sami-mag07/flight-search
+   cd flight-search
    ```
-4. **Searchify** einbinden, die Websuche für den Agenten (kostenlos, kein API-Key): https://github.com/sami-mag07/searchify
+4. **Searchify**, web search for the agent, free and without an API key: https://github.com/sami-mag07/searchify
    ```
    claude mcp add searchify -- uvx --from "searchify[mcp,rerank]" searchify-mcp
    ```
-5. **Test:** `uv run flug.py land` gibt das Land deiner IP aus, zum Beispiel `DE`.
+5. **Browser** for airline and booking sites (needs Node.js):
+   ```
+   claude mcp add playwright -- npx @playwright/mcp@latest
+   ```
+6. **Test:**
+   ```
+   $ uv run flight.py country
+   DE
+   ```
 
-VPN ist optional, siehe unten.
+A VPN is optional, see below.
 
-## Benutzen
+## Use
 
-Im Ordner `claude` starten und schreiben, was du suchst:
+Start `claude` in the folder and say what you want:
 
-> Such mir Flüge von Berlin nach Lissabon, hin 15. oder 16. Januar, zurück 22. Januar, ein Koffer.
+> Find me flights from Berlin to Lisbon, out 15 or 16 January, back 22 January, one checked bag.
 
-Dann passiert das:
+What happens, with a short example of each step:
 
-1. **Interview.** Der Agent fragt nur, was fehlt: von wo, wohin, wann, wie flexibel, wie viele Personen. Steht nichts zum Gepäck in deiner Nachricht, fragt er danach.
-2. **Suche.** Jeder Tag in deinem Spielraum, jeder passende Flughafen (auch Nachbarflughäfen), Hin- und Rückflug einzeln.
-3. **Länder.** Dieselbe Suche noch einmal über VPN aus US, GB, TR, BR und TH.
-4. **Gepäck.** Für die Airlines in den Ergebnissen sucht der Agent per Searchify, ob ein Koffer drin ist und was er sonst kostet, und rechnet ihn in den Preis.
-5. **Ergebnis.** Tabellen im Chat und als Seite `ergebnisse/board.html`:
-   - günstigster Preis pro Tag und Strecke
-   - die günstigsten Hin- und Rückflüge mit Uhrzeit, Dauer, Stopps, Koffer und Preis je Land
-   - die günstigsten Kombis aus Hin und zurück
-   - bei jedem Flug der Link zu Google Flights
+1. **Interview.** The agent asks only what is missing: from, to, dates, flexibility, adults, baggage if you did not say, how you pay and which countries to buy in.
+   ```
+   How do you pay, and is a foreign currency fine?   Credit card, 1.75 % fee abroad
+   Where should I compare?                           US, GB, PL, TR, BR
+   ```
+2. **Plan.** Airports, days, countries, sites and how long it takes.
+   ```
+   Airports  BER to LIS, OPO
+   Days      out 15 to 16 Jan, back 22 Jan (6 queries)
+   Countries DE, US, GB, PL, TR, BR
+   Sites     airline, Kayak, Skyscanner, one local portal for the 2 best combinations
+   Time      about 2 min Google, about 30 min sites
+   ```
+3. **Google Flights** for every day and airport, once per country.
+   ```
+   DE BER-LIS 2027-01-15: 129 flights
+   DE BER-OPO 2027-01-15: 47 flights
+   608 flights from 6 queries in results/lisbon.jsonl
+   ```
+4. **Airline and booking sites abroad.** For the best flights the agent opens the airline site, Kayak, Skyscanner and a local portal in each country and records the price it sees.
+   ```
+   b7864b1cc2 ryanair.com GB: 46.85 GBP = €55.94
+   b7864b1cc2 ryanair.com PL: 250.08 PLN = €55.77
+   ```
+5. **Baggage.** The agent looks up whether a bag is included and what it costs, and adds it to the price (example values):
+   ```
+   | With bag    | Ticket | Bag   | Flight                        |
+   | €111        | €66    | +€45  | Ryanair, 11:35 to 14:20       |
+   | €97 + bag ? | €97    | ?     | KLM, 05:00 to 17:30, 1 stop   |
+   ```
+6. **Result** in the chat and as `results/board.html` (screenshot above):
+   ```
+   | Total | Out                | Outbound flight                       | Back               | Return flight                         |
+   |-------|--------------------|---------------------------------------|--------------------|---------------------------------------|
+   | €121  | 2027-01-15 BER-OPO | easyJet, 13:30 to 15:55, 3 h 25 min   | 2027-01-22 LIS-BER | Ryanair, 06:20 to 10:50, 3 h 30 min   |
+   ```
 
-## VPN und Länder
+## VPN and countries
 
-| Weg | Kosten | Wie |
+| Way | Cost | How |
 |---|---|---|
-| Mullvad | 5 € im Monat | Der Agent wechselt die Länder selbst über `mullvad`. Mullvad-App installieren und einloggen. |
-| Andere VPN-App | je nach Anbieter | Der Agent sagt dir das Land, du stellst es in der App um und schreibst "weiter". |
-| Eigener Server | kostenlos, wenn du einen hast | `ssh -f -N -D 1080 user@server`, dann `FLUG_PROXY` in `.env` (Vorlage `.env.example`). |
-| Tor | kostenlos | `brew install tor` oder `apt install tor`. Google zeigt Tor oft ein Captcha. |
+| Mullvad | €5 a month | The agent switches countries itself through `mullvad`. Install the Mullvad app and log in. |
+| Any other VPN app | depends | The agent names the country, you switch it in the app and reply "go on". |
+| Your own server | free if you have one | `ssh -f -N -D 1080 user@server`, then `FLIGHT_PROXY` in `.env` (template `.env.example`) and `uv run --env-file .env flight.py ...`. |
+| Tor | free | `brew install tor` or `apt install tor`. Google often shows Tor a captcha. |
 
-Das Skript prüft vor jeder Runde, aus welchem Land die IP wirklich kommt, und bricht ab, wenn das VPN nicht steht.
+Before every round the script checks which country the IP really comes from and stops if the VPN is not up.
 
-Ehrlich dazu: Ein Test vom 25.11.2026 mit 2 IP-Ländern, 8 Marktländern, mehreren Währungen und Handy-Profilen ergab bei Google Flights überall denselben Preis. Die Länderrunde ist ein Gegencheck. Unterschiede gibt es, wenn überhaupt, eher direkt bei Airlines und Buchungsportalen.
+## What to expect
 
-## Ohne Agent
+Measured, not guessed:
+
+- **Google Flights**, test on 25 Nov 2026 with 2 IP countries, 8 market countries, several currencies and phone profiles: the same price everywhere.
+- **ryanair.com**, same flight LIS-BER on 22 Jan 2027, checked on 28 Nov 2026: PT €55.99, GB £46.85 (€55.94), PL 250.08 zł (€55.77). Differences come from the exchange rate, less than 1 %.
+
+So the country check is a safety net, not a money machine. If something is cheaper, it is most likely on a booking portal with its own discount or on a long haul airline with country specific fares. A price only counts if the agent saw it on the page.
+
+## Without the agent
 
 ```
-uv run flug.py suche --von BER --nach LIS,OPO --hin 2027-01-15..2027-01-16 --zurueck 2027-01-22 --out ergebnisse/lissabon.jsonl
-uv run flug.py suche --von BER --nach LIS,OPO --hin 2027-01-15..2027-01-16 --zurueck 2027-01-22 --land US --out ergebnisse/lissabon.jsonl
-uv run flug.py tabelle ergebnisse/lissabon.jsonl --gepaeck ergebnisse/gepaeck.json
+uv run flight.py search --from BER --to LIS,OPO --depart 2027-01-15..2027-01-16 --return 2027-01-22 --out results/lisbon.jsonl
+uv run flight.py search --from BER --to LIS,OPO --depart 2027-01-15..2027-01-16 --return 2027-01-22 --country GB --out results/lisbon.jsonl
+uv run flight.py links results/lisbon.jsonl --countries GB,TR,BR --top 2
+uv run flight.py record --file results/lisbon.jsonl --id b7864b1cc2 --site ryanair.com --country GB --price 46.85 --currency GBP --per-person --url "<page url>"
+uv run flight.py table results/lisbon.jsonl --baggage results/baggage.json --fx-fee 1.75
 ```
 
-| Option | Bedeutung |
+| Command and option | Meaning |
 |---|---|
-| `--von`, `--nach` | IATA-Codes, mehrere mit Komma |
-| `--hin`, `--zurueck` | Daten mit Komma oder als Bereich `2027-01-15..2027-01-18` |
-| `--personen` | Erwachsene, Preise gelten dann für alle zusammen |
-| `--stopps 0` | nur Direktflüge |
-| `--land`, `--proxy` | Länderrunde, siehe oben |
-| `--gepaeck` | Kofferpreise pro Airline, Format in `CLAUDE.md` |
-| `--top`, `--max-stunden`, `--max-stopps` | Tabelle kürzen oder filtern |
+| `search --from`, `--to` | IATA codes, several with commas |
+| `search --depart`, `--return` | dates with commas or as a range `2027-01-15..2027-01-18` |
+| `search --adults` | adults, prices are then for all of them together |
+| `search --stops 0` | nonstop only |
+| `search --country`, `--proxy` | country round, see above |
+| `search --out`, `--force` | result file (default `results/search.jsonl`), run even if the IP country does not match |
+| `links --countries`, `--top` | Kayak and Skyscanner links per country for the best combinations |
+| `record` | a price seen on a site, converted to euro at the ECB rate, saved in `results/sites.jsonl` |
+| `record --per-person` | the site showed a price per person, multiply by the adults of the search |
+| `table --baggage` | bag fees per airline, format in `CLAUDE.md` |
+| `table --fx-fee` | card fee in percent for foreign currencies |
+| `table --top`, `--max-hours`, `--max-stops` | shorten or filter the tables |
+| `table --sites`, `--board` | site prices to show (default `results/sites.jsonl`), where the page goes (default `results/board.html`) |
+| `country` | the country of your current IP |
 
-## Was die Zahlen heißen
+## What the numbers mean
 
-- Preise sind der Grundtarif in Economy für alle Personen zusammen, ohne aufgegebenes Gepäck. Mit `--gepaeck` kommt der Koffer dazu; wo er unklar ist, steht "+ Koffer ?".
-- Hin und zurück sind zwei Einzelflüge, zusammengezählt. Google liefert Rundflüge ohne Browser nicht mehr aus. Der Link "Als Paket" öffnet den echten Hin- und Rückflug, der kann billiger sein.
-- Ein Link öffnet die Strecke an dem Tag in Google Flights. Den Flug wählst du dort über Airline und Uhrzeit aus der Tabelle.
-- Zu viele Abfragen am Stück beantwortet Google mit einem Captcha. Das Skript wartet deshalb 2 Sekunden zwischen den Abfragen.
-- Gebucht wird nichts.
+- Google prices are the economy base fare for all adults together, without checked bags. With `--baggage` the bag is added; where it is unknown the table says "+ bag ?".
+- Out and back are two single flights added up. Google no longer returns round trips without a browser. The "As package" link opens the real round trip, which can be cheaper.
+- A Google link opens the route on that day. Pick the flight there by airline and time from the table.
+- Too many queries in a row get a captcha from Google, so the script waits 2 seconds between them.
+- Nothing gets booked.

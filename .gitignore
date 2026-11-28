@@ -1,4 +1,4 @@
-ergebnisse/
+results/
 .env
 .env.*
 !.env.example
